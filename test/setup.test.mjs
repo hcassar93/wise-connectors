@@ -6,14 +6,14 @@ import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 for(const existing of [false,true])test(`${existing?'existing':'new'} project: setup refuses unapproved cloud changes and reruns without duplicate projects or secret rotation (mock CLIs)`,()=>{
  const home=mkdtempSync(join(tmpdir(),'wise-setup-test-'));const root=join(home,'.config','wise-connectors');const bin=join(home,'bin');mkdirSync(root,{recursive:true});mkdirSync(bin);
- writeFileSync(join(root,'credentials.json'),JSON.stringify({wiseToken:'synthetic-wise',bearerToken:'synthetic-bearer'}),{mode:0o600});
+ writeFileSync(join(root,'credentials.json'),JSON.stringify({wiseToken:'synthetic-wise',bearerToken:'synthetic-bearer-for-temporary-tests-only'}),{mode:0o600});
  const mock=`#!/usr/bin/env node
 const fs=require('fs'),path=require('path');const a=process.argv.slice(2),f=path.join(process.env.HOME,'calls.json');const calls=fs.existsSync(f)?JSON.parse(fs.readFileSync(f)):[];calls.push(a);fs.writeFileSync(f,JSON.stringify(calls));
 const sf=path.join(process.env.HOME,'cloud.json');let s=fs.existsSync(sf)?JSON.parse(fs.readFileSync(sf)):{secrets:{}};
 if(a[0]==='projects'&&a[1]==='describe')console.log(JSON.stringify({projectId:'synthetic-wise-test',lifecycleState:'ACTIVE',labels:{app:'wise-connectors'}}));
 if(a[0]==='secrets'&&a[1]==='list')console.log(JSON.stringify(Object.keys(s.secrets).map(n=>({name:'projects/mock/secrets/'+n,labels:{app:'wise-connectors'}}))));
 if(a[0]==='secrets'&&a[1]==='create')s.secrets[a[2]]=null;
-if(a[0]==='secrets'&&a[1]==='versions'&&a[2]==='list')console.log(JSON.stringify(s.secrets[a[3]]?[{name:'1'}]:[]));
+if(a[0]==='secrets'&&a[1]==='versions'&&a[2]==='list')console.log(JSON.stringify(s.secrets[a[3]]?[{name:'1',state:'ENABLED'}]:[]));
 if(a[0]==='secrets'&&a[1]==='versions'&&a[2]==='add')s.secrets[a[3]]=fs.readFileSync(0,'utf8');
 if(a[0]==='secrets'&&a[1]==='versions'&&a[2]==='access')console.log(s.secrets[a.find(x=>x.startsWith('--secret=')).slice(9)]);
 if(a[0]==='billing'&&a[2]==='describe')console.log(JSON.stringify({billingEnabled:true,billingAccountName:'billingAccounts/AAAAAA-BBBBBB-CCCCCC'}));
@@ -29,7 +29,7 @@ fs.writeFileSync(sf,JSON.stringify(s));
  const env={...process.env,HOME:home,PATH:bin+':'+process.env.PATH};
  // Seed a planned identity so one-line approval works with piped stdin.
  const state=join(root,'deployment.json');if(!existing)writeFileSync(state,JSON.stringify({projectId:'synthetic-wise-test',billing:'AAAAAA-BBBBBB-CCCCCC',phase:'planned'}),{mode:0o600});
- const run=input=>spawnSync(process.execPath,['scripts/setup.mjs',...(existing?['--existing-project','synthetic-wise-test','--account','synthetic@example.invalid']:[])],{env,input,encoding:'utf8'});
+ const run=input=>spawnSync(process.execPath,['scripts/setup.mjs',...(existing?['--existing-project','synthetic-wise-test','--account','synthetic@example.invalid']:[]),...(env.MOCK_REUSE?['--reuse-wise-secret','--wise-environment','production']:[])],{env,input,encoding:'utf8'});
  try{
   assert.equal(run('NO\n').status,1);
   let calls=JSON.parse(readFileSync(join(home,'calls.json')));assert.equal(calls.some(a=>a[0]==='projects'&&a[1]==='create'),false);
@@ -45,6 +45,13 @@ fs.writeFileSync(sf,JSON.stringify(s));
    for(const a of calls.filter(a=>a.includes('deploy'))){assert.equal(a[a.indexOf('--only')+1],'functions:wise-connectors:wiseMcp');assert.ok(a.includes('--account=synthetic@example.invalid'));assert.ok(!a.includes('--force'));}
   }
   if(existing){
+   env.MOCK_REUSE='1';
+   let before=JSON.parse(readFileSync(join(home,'calls.json'))).length;
+   let reused=run('APPROVE\n');assert.equal(reused.status,0,reused.stderr);
+   let reuseCalls=JSON.parse(readFileSync(join(home,'calls.json'))).slice(before);
+   assert.equal(reuseCalls.some(a=>a.includes('--secret=WISE_CONNECTORS_API_TOKEN')),false);
+   assert.equal(reuseCalls.some(a=>a[0]==='secrets'&&a[2]==='add'&&a[3]==='WISE_CONNECTORS_API_TOKEN'),false);
+   calls=JSON.parse(readFileSync(join(home,'calls.json')));
    const deployments=calls.filter(a=>a.includes('deploy')).length;
    for(const collision of ['function','codebase']){env.MOCK_COLLISION=collision;const r=run('APPROVE\n');assert.equal(r.status,1);assert.match(r.stderr,/refusing/);}
    calls=JSON.parse(readFileSync(join(home,'calls.json')));

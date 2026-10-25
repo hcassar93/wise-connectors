@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { wiseSecret } from './secret.js';
 import { config } from './config.js';
 import { WiseClient } from './wise.js';
 import { server } from './mcp.js';
 import { httpApp } from './http.js';
-const p = new Command().name('wise-connectors');
-const client = ()=>{const c=config();return new WiseClient(c.wiseToken,c.sandbox);};
+const p = new Command().name('wise-connectors').option('--secret-project <id>').option('--google-account <email>').option('--wise-environment <production|sandbox>');
+const client = ()=>{const o=p.opts();const c=o.secretProject?wiseSecret(o.secretProject,o.googleAccount??'',o.wiseEnvironment??''):config();return new WiseClient(c.wiseToken,c.sandbox);};
 const output = (x:unknown)=>console.log(JSON.stringify(x,null,2));
 p.command('profiles').action(async()=>output(await client().profiles()));
 p.command('balances').requiredOption('--profile-id <id>').action(async o=>output(await client().balances({profileId:Number(o.profileId)})));

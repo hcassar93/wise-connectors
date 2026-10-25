@@ -84,3 +84,24 @@ For live verification, run `node scripts/verify-live.mjs` after credential appro
 Firebase deployment requires the pay-as-you-go Blaze plan. Second-generation functions use Cloud Run billing for requests, CPU/memory time and outbound networking; builds, artifact storage, logging and Secret Manager can add charges. Free allowances do not guarantee a zero bill, especially on a shared billing account. Secret Manager currently includes six active versions and 10,000 accesses per month across the billing account; this setup intends two secret versions. Unauthorized requests can still consume infrastructure resources before the application rejects them. No billing account or budget has been configured by this repository.
 
 Sources checked 2026-10-25: [Firebase pricing](https://firebase.google.com/pricing), [Cloud Run pricing](https://cloud.google.com/run/pricing), [Secret Manager pricing](https://cloud.google.com/secret-manager/pricing), [function scaling options](https://firebase.google.com/docs/functions/manage-functions).
+
+## Phone-friendly Wise token entry
+
+You can enter a token directly into the official [Google Cloud Secret Manager console](https://console.cloud.google.com/security/secret-manager) from your phone. Select your intended project, choose **Create secret**, name it `WISE_CONNECTORS_API_TOKEN`, and paste the read-only Wise token into **Secret value**. Use automatic replication and the default Google-managed encryption unless your organization requires otherwise. Do not send the value in chat. Confirm separately whether it is a production or sandbox token; never infer the environment from the token text.
+
+After approving use of that secret, CLI commands can read it into process memory without writing it locally:
+
+```sh
+node dist/cli.js --secret-project YOUR_PROJECT_ID --google-account YOUR_EMAIL --wise-environment production profiles
+node scripts/verify-live.mjs --secret-project YOUR_PROJECT_ID --google-account YOUR_EMAIL --wise-environment production
+```
+
+Use `sandbox` explicitly for local sandbox verification. The live verifier captures all financial output in memory and prints only pass/fail summaries. Local HTTP verification uses a temporary bearer credential; hosted verification uses the separately approved protected bearer configuration. No cloud payloads are read merely by building/testing the repository.
+
+For production deployment, after separate approval and creation of the protected bearer-only configuration, use:
+
+```sh
+npm run setup -- --existing-project YOUR_PROJECT_ID --account YOUR_EMAIL --reuse-wise-secret --wise-environment production
+```
+
+This mode checks only the user-created Wise secret's metadata and enabled versions. It never reads, copies, replaces, relabels or rotates that Wise value. The function subsequently accesses the existing secret through its separately approved runtime permission. A protected `credentials.json` containing only `bearerToken` is sufficient in this mode; no local Wise token is required. Bearer generation/storage and runtime access remain separate approval steps.

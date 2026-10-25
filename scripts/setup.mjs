@@ -9,6 +9,8 @@ const argv=process.argv.slice(2);
 function option(name){const i=argv.indexOf(name);return i<0?undefined:argv[i+1];}
 const existing=option('--existing-project');
 const account=option('--account');
+const reuseWise=argv.includes('--reuse-wise-secret');
+if(reuseWise && (!existing || option('--wise-environment')!=='production'))throw Error('Reusing a Wise secret for hosting requires --existing-project and --wise-environment production');
 if(existing && (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(existing)||!account))throw Error('Existing-project mode requires a valid project ID and explicit --account email');
 const requiredServices=['firebase.googleapis.com','cloudfunctions.googleapis.com','run.googleapis.com','cloudbuild.googleapis.com','artifactregistry.googleapis.com','secretmanager.googleapis.com'];
 
@@ -18,7 +20,9 @@ let lock;
 try {
  if(!existsSync(file))throw Error('Run python3 scripts/credentials.py interactively first');
  if(statSync(file).mode&0o077)throw Error('Credentials must have mode 0600');
- const credentials=JSON.parse(readFileSync(file,'utf8'));if(credentials.sandbox)throw Error('Hosted deployment currently requires a production read-only token; sandbox credentials are local-only');
+ const credentials=JSON.parse(readFileSync(file,'utf8'));if(!credentials.bearerToken || credentials.bearerToken.length<32)throw Error('A separately approved protected bearer credential is required');
+ if(!reuseWise && !credentials.wiseToken)throw Error('Wise token missing; use explicit --reuse-wise-secret for a user-created cloud secret');
+ if(credentials.sandbox)throw Error('Hosted deployment currently requires a production read-only token; sandbox credentials are local-only');
  lock=openSync(join(root,'setup.lock'),'wx',0o600);
  run('gcloud',['version']);run('npx',['--no-install','firebase','--version']);
  const statePath=join(root,'deployment.json');
@@ -73,6 +77,12 @@ try {
  const secrets=JSON.parse(cloud(['secrets','list',`--project=${p}`,'--format=json']));
  for(const [name,value] of [['WISE_CONNECTORS_API_TOKEN',credentials.wiseToken],['WISE_CONNECTORS_MCP_BEARER_TOKEN',credentials.bearerToken]]){
   const found=secrets.find(s=>s.name.endsWith('/'+name));
+  if(reuseWise && name==='WISE_CONNECTORS_API_TOKEN'){
+   if(!found)throw Error('User-created Wise secret not found; refusing to create or replace it');
+   const versions=JSON.parse(cloud(['secrets','versions','list',name,`--project=${p}`,'--format=json']));
+   if(!versions.some(v=>v.state==='ENABLED'))throw Error('User-created Wise secret has no enabled version');
+   continue; // Metadata only: never access, copy, relabel or replace the user-created Wise value.
+  }
   if(found && found.labels?.app!=='wise-connectors')throw Error('Secret name collision; refusing to read or alter unrelated credentials');
   if(!found)cloud(['secrets','create',name,`--project=${p}`,'--labels=app=wise-connectors','--replication-policy=automatic','--quiet']);
   const versions=JSON.parse(cloud(['secrets','versions','list',name,`--project=${p}`,'--format=json']));

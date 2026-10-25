@@ -6,11 +6,16 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {wiseSecret} from '../dist/secret.js';
+import {randomBytes} from 'node:crypto';
 import {config} from '../dist/config.js';
 import {WiseClient} from '../dist/wise.js';
 import {httpApp} from '../dist/http.js';
-const c=config();
-function cli(args){const r=spawnSync(process.execPath,['dist/cli.js',...args],{encoding:'utf8'});if(r.status!==0)throw Error('Live CLI command failed (private output suppressed)');return JSON.parse(r.stdout);}
+const value=name=>{const i=process.argv.indexOf(name);return i<0?undefined:process.argv[i+1];};
+const project=value('--secret-project');
+const cloudFlags=project?['--secret-project',project,'--google-account',value('--google-account')??'','--wise-environment',value('--wise-environment')??'']:[];
+const c=project?{...wiseSecret(project,value('--google-account')??'',value('--wise-environment')??''),bearerToken:process.argv.includes('--hosted')?config().bearerToken:randomBytes(48).toString('base64url')}:config();
+function cli(args){const r=spawnSync(process.execPath,['dist/cli.js',...cloudFlags,...args],{encoding:'utf8'});if(r.status!==0)throw Error('Live CLI command failed (private output suppressed)');return JSON.parse(r.stdout);}
 let listener;let client;
 try{
  const profiles=cli(['profiles']);const p=profiles.find(x=>x.type.toUpperCase()==='BUSINESS');if(!p)throw Error('No accessible Business profile');
