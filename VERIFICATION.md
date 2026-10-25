@@ -1,6 +1,6 @@
 # Verification checkpoint — 2026-10-25
 
-Passed (synthetic): TypeScript build and 5/5 tests on Node.js 22.23.3. The HTTP test uses the real MCP SDK client against a loopback server with synthetic Wise responses, executes all four tools, and checks missing/incorrect bearer rejection for GET, POST and DELETE (six checks). Production dependency audit: 0 vulnerabilities. Setup script syntax check passed.
+Passed (synthetic): TypeScript build and 6/6 tests on Node.js 22.23.3. The HTTP test uses the real MCP SDK client against a loopback server with synthetic Wise responses, executes all four tools, and checks missing/incorrect bearer rejection for GET, POST and DELETE (six checks). Production dependency audit: 0 vulnerabilities. Setup script syntax check passed. A mocked setup test verifies refusal without approval and safe reruns without duplicate project creation or secret rotation.
 
 Earlier failure: loopback listener denied by execution sandbox; rerunning with scoped loopback permission passed. This was not an application failure.
 
