@@ -4,3 +4,4 @@ dist/
 *.log
 .firebase/
 .firebaserc
+__pycache__/
