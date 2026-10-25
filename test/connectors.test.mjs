@@ -24,3 +24,13 @@ test('real MCP SDK client over HTTP with synthetic Wise data; all methods reject
  for(const [name,a]of [['profiles',{}],['balances',{profileId:1}],['statement',args],['card_spending',args]])assert.notEqual((await client.callTool({name,arguments:a})).isError,true);
  }finally{await client.close();await new Promise(r=>listener.close(r));}
 });
+
+test('synthetic Firebase manifest isolates Wise function and runtime secrets',async()=>{
+ process.env.GCLOUD_PROJECT='synthetic-wise-test';
+ const module=await import('../dist/firebase.js');
+ assert.deepEqual(Object.keys(module),['wiseMcp']);
+ const endpoint=module.wiseMcp.__endpoint;
+ assert.equal(endpoint.serviceAccountEmail,'wise-connectors-runtime@synthetic-wise-test.iam.gserviceaccount.com');
+ assert.deepEqual(endpoint.secretEnvironmentVariables.map(x=>x.key).sort(),['WISE_CONNECTORS_API_TOKEN','WISE_CONNECTORS_MCP_BEARER_TOKEN']);
+ assert.equal(endpoint.minInstances,0);assert.equal(endpoint.maxInstances,2);
+});

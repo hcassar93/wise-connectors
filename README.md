@@ -55,11 +55,23 @@ Prerequisites: Node.js 22, bundled Firebase CLI (`npx firebase`), current Google
 npm run setup
 ```
 
-Setup asks for a new globally unique project ID, billing account ID and explicit approval of persistent secrets/access and billing. It creates only the selected new project, enables Firebase/Functions/Cloud Run/Build/Artifact Registry/Secret Manager, stores both tokens in Secret Manager, and deploys the function. Firebase configures function runtime secret access during deployment. The HTTPS invoker is public at the infrastructure level so custom bearer authentication can work; the application requires the bearer credential on every request.
+Default new-project setup asks for a globally unique project ID, billing account ID and explicit approval of persistent secrets/access and billing. It creates only the selected new project, enables Firebase/Functions/Cloud Run/Build/Artifact Registry/Secret Manager, stores both tokens in Secret Manager, and deploys the function. Secrets are named `WISE_CONNECTORS_API_TOKEN` and `WISE_CONNECTORS_MCP_BEARER_TOKEN`. Setup creates the dedicated `wise-connectors-runtime@PROJECT_ID.iam.gserviceaccount.com` service account without project-wide roles; Firebase grants it secretAccessor on just those two secrets during deployment. The function is named `wiseMcp` in codebase `wise-connectors`. The HTTPS invoker is public at the infrastructure level so custom bearer authentication can work; the application requires the bearer credential on every request.
 
 Project identity and progress are stored outside the repository in `~/.config/wise-connectors/deployment.json`. A lock prevents concurrent setup. Reruns reuse that identity, compare existing secret values without printing them, and never silently rotate credentials or create a second project. If creation succeeded but state saving failed, setup stops rather than adopting an existing project: manually verify ownership and repair the phase in the protected state file. The same rule applies to interrupted Firebase attachment. Setup suppresses subprocess output to avoid secret disclosure; diagnose failures using read-only project/permission commands, never debug-print secret-access results.
 
 On success it prints the endpoint URL and writes `~/.config/wise-connectors/client.json` (0600) containing the MCP client URL and bearer header. Keep this file private. Never commit generated configuration. Production hosting currently requires a production Wise token; sandbox remains available for local testing.
+
+## Deploy into an existing Firebase project
+
+After separate credential/access approval, use:
+
+```sh
+npm run setup -- --existing-project YOUR_PROJECT_ID --account YOUR_PERSONAL_EMAIL
+```
+
+The selected email must already be authenticated in both gcloud and Firebase. `npx firebase login:add YOUR_PERSONAL_EMAIL` adds a Firebase account without changing the existing default; setup selects it explicitly. Account sign-in creates persistent access and requires your approval. A user at another device can use the CLI's `--no-localhost` login flow, but Wise token entry still requires the Mac's interactive terminal or an already trusted secure remote terminal. Never send tokens through chat.
+
+Existing-project mode verifies the exact active project, enabled billing, existing Firebase membership and required enabled services. It never creates a project, changes billing, attaches Firebase, changes project labels or enables services. Missing prerequisites cause a stop. It only deploys `functions:wise-connectors:wiseMcp`, without `--force`. Function/codebase collisions are refused; unrelated functions, Hosting, Authentication, data and configuration are outside the deploy selector. Existing secret/runtime names must have the connector ownership markers, otherwise setup refuses to adopt them. Saved deployment state prevents accidental target or account switching. New-project support remains the default for other users.
 
 ## Verification
 
